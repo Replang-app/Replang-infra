@@ -1,0 +1,36 @@
+{
+  "name": "@replang/shared",
+  "version": "0.1.0",
+  "description": "Code partagé des services Replang : config env (Zod), vérification JWT (Better-Auth/JWKS), erreurs standard, appels inter-services.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepack": "tsc"
+  },
+  "dependencies": {
+    "jose": "^5.9.6",
+    "zod": "^3.24.1"
+  },
+  "peerDependencies": {
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "fastify": "^5.2.0",
+    "typescript": "^5.7.3"
+  },
+  "license": "UNLICENSED"
+}

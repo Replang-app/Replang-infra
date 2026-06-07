@@ -1,0 +1,172 @@
+# ──────────────────────────────────────────────────────────────
+# Replang — Stack de DÉVELOPPEMENT
+# Lance l'infra de base : Postgres, Redis, MinIO, Ollama.
+# Les services applicatifs (auth, notes, …) sont ajoutés au fur et
+# à mesure de leur développement (blocs commentés en bas).
+#
+#   docker compose up -d postgres redis minio ollama
+# ──────────────────────────────────────────────────────────────
+
+name: replang
+
+services:
+  # ─── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-replang}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-replang}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-replang}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─── Redis ──────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─── MinIO (stockage objet compatible S3) ───────────────────
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-replang}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-changeme_dev_password}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Crée le bucket audio au démarrage puis s'arrête.
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-replang} ${MINIO_ROOT_PASSWORD:-changeme_dev_password};
+      mc mb --ignore-existing local/${S3_BUCKET:-replang-audio};
+      echo 'Bucket prêt';
+      exit 0;
+      "
+
+  # ─── Ollama (LLM local pour l'IA) ───────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # GPU : décommenter si carte NVIDIA dispo (sinon CPU, plus lent)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ════════════════════════════════════════════════════════════
+  # SERVICES APPLICATIFS — à activer au fur et à mesure du dev.
+  # En dev, chaque service est buildé depuis son repo voisin
+  # (cloné à côté de Replang-infra) et expose son port en localhost.
+  # ════════════════════════════════════════════════════════════
+
+  # auth:
+  #   build: ../Replang-auth
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   ports: ["${AUTH_PORT:-3001}:3001"]
+  #   depends_on:
+  #     postgres: { condition: service_healthy }
+  #     redis: { condition: service_healthy }
+
+  # notes:
+  #   build: ../Replang-notes
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   ports: ["${NOTES_PORT:-3002}:3002"]
+  #   depends_on:
+  #     postgres: { condition: service_healthy }
+
+  # audio:
+  #   build: ../Replang-audio
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   ports: ["${AUDIO_PORT:-3003}:3003"]
+  #   depends_on:
+  #     postgres: { condition: service_healthy }
+  #     minio: { condition: service_healthy }
+
+  # cards:
+  #   build: ../Replang-cards
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   ports: ["${CARDS_PORT:-3004}:3004"]
+  #   depends_on:
+  #     postgres: { condition: service_healthy }
+  #     redis: { condition: service_healthy }
+
+  # dict:
+  #   build: ../Replang-dict
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   ports: ["${DICT_PORT:-3005}:3005"]
+  #   depends_on:
+  #     redis: { condition: service_healthy }
+
+  # notifications:
+  #   build: ../Replang-notifications
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   ports: ["${NOTIF_PORT:-3006}:3006"]
+  #   depends_on:
+  #     postgres: { condition: service_healthy }
+  #     redis: { condition: service_healthy }
+
+  # ai:
+  #   build: ../Replang-ai
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   ports: ["${AI_PORT:-8000}:8000"]
+  #   depends_on:
+  #     - ollama
+
+  # frontend:
+  #   build: ../Replang-frontend
+  #   restart: unless-stopped
+  #   env_file: .env
+  #   ports: ["${FRONTEND_PORT:-3000}:3000"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  ollama_data:

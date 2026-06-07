@@ -1,0 +1,168 @@
+# ──────────────────────────────────────────────────────────────
+# Replang — Stack de PRODUCTION
+# Tire les images depuis le registry GHCR, Traefik en reverse proxy
+# avec HTTPS automatique (Let's Encrypt) et routage par path.
+#
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Pré-requis : DNS pointant vers le serveur + variables dans .env
+# (DOMAIN, ACME_EMAIL, secrets prod…).
+# ──────────────────────────────────────────────────────────────
+
+name: replang
+
+# Images publiées sur GHCR : ghcr.io/replang-app/<service>:latest
+
+services:
+  # ─── Traefik (reverse proxy + HTTPS) ────────────────────────
+  traefik:
+    image: traefik:v3.1
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.le.acme.tlschallenge=true"
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+
+  # ─── Données ────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ─── Services applicatifs (images du registry) ──────────────
+  auth:
+    image: ghcr.io/replang-app/replang-auth:latest
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.auth.entrypoints=websecure"
+      - "traefik.http.routers.auth.tls.certresolver=le"
+      - "traefik.http.services.auth.loadbalancer.server.port=3001"
+
+  notes:
+    image: ghcr.io/replang-app/replang-notes:latest
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.notes.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/notes`)"
+      - "traefik.http.routers.notes.entrypoints=websecure"
+      - "traefik.http.routers.notes.tls.certresolver=le"
+      - "traefik.http.services.notes.loadbalancer.server.port=3002"
+
+  audio:
+    image: ghcr.io/replang-app/replang-audio:latest
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.audio.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/audio`)"
+      - "traefik.http.routers.audio.entrypoints=websecure"
+      - "traefik.http.routers.audio.tls.certresolver=le"
+      - "traefik.http.services.audio.loadbalancer.server.port=3003"
+
+  cards:
+    image: ghcr.io/replang-app/replang-cards:latest
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cards.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/cards`)"
+      - "traefik.http.routers.cards.entrypoints=websecure"
+      - "traefik.http.routers.cards.tls.certresolver=le"
+      - "traefik.http.services.cards.loadbalancer.server.port=3004"
+
+  dict:
+    image: ghcr.io/replang-app/replang-dict:latest
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      redis: { condition: service_healthy }
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dict.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/dict`)"
+      - "traefik.http.routers.dict.entrypoints=websecure"
+      - "traefik.http.routers.dict.tls.certresolver=le"
+      - "traefik.http.services.dict.loadbalancer.server.port=3005"
+
+  notifications:
+    image: ghcr.io/replang-app/replang-notifications:latest
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    # Worker + cron : pas de route Traefik (pas d'API publique).
+
+  ai:
+    image: ghcr.io/replang-app/replang-ai:latest
+    restart: unless-stopped
+    env_file: .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ai.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/ai`)"
+      - "traefik.http.routers.ai.entrypoints=websecure"
+      - "traefik.http.routers.ai.tls.certresolver=le"
+      - "traefik.http.services.ai.loadbalancer.server.port=8000"
+
+  frontend:
+    image: ghcr.io/replang-app/replang-frontend:latest
+    restart: unless-stopped
+    env_file: .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=le"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+
+volumes:
+  postgres_data:
+  redis_data:
+  traefik_letsencrypt:

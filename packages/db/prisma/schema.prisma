@@ -1,0 +1,330 @@
+// ──────────────────────────────────────────────────────────────
+// Replang — Schéma Prisma (SOURCE DE VÉRITÉ)
+// Centralisé dans Replang-infra, publié via @replang/db.
+// Auth gérée par Better-Auth → modèles User/Session/Account/Verification.
+// ──────────────────────────────────────────────────────────────
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../generated/client"
+  // native = machine de dev ; les targets linux servent aux images Docker
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── AUTH (Better-Auth) ───────────────────────────────────────
+// Ces 4 modèles suivent les conventions Better-Auth (adapter Prisma).
+// On y ajoute des champs métier (displayName, settings) sur User.
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Champs métier Replang
+  displayName String?
+  settings    Json   @default("{}")
+
+  // Relations Better-Auth
+  sessions Session[]
+  accounts Account[]
+
+  // Rôles (admin, user, ia, note…) — many-to-many via UserRole
+  roles UserRole[]
+
+  // Relations métier
+  recordings        Recording[]
+  notebooks         Notebook[]
+  notes             Note[]
+  decks             Deck[]
+  cardReviews       CardReview[]
+  pushSubscriptions PushSubscription[]
+  sentFriendships   Friendship[]       @relation("FriendshipRequester")
+  recvFriendships   Friendship[]       @relation("FriendshipAddressee")
+  sentShares        SharedItem[]       @relation("ShareFrom")
+  recvShares        SharedItem[]       @relation("ShareTo")
+  blocksMade        Block[]            @relation("Blocker")
+  blocksReceived    Block[]            @relation("Blocked")
+  reportsMade       Report[]           @relation("Reporter")
+  reportsReceived   Report[]           @relation("Reported")
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// ─── RÔLES & PERMISSIONS ──────────────────────────────────────
+// Rôles stockés en table (et non en enum) pour pouvoir en ajouter/
+// modifier sans migration. Un utilisateur peut cumuler plusieurs
+// rôles (relation many-to-many via la table de jonction UserRole).
+
+model Role {
+  id          String     @id @default(uuid()) @db.Uuid
+  name        String     @unique // "admin" | "user" | "ia" | "note" …
+  description String?
+  createdAt   DateTime   @default(now())
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+// Table de jonction User <-> Role. Clé primaire composite (userId, roleId)
+// : un même rôle ne peut être attribué qu'une fois à un utilisateur.
+model UserRole {
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId     String   @db.Uuid
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedAt DateTime @default(now())
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+// ─── AUDIO ────────────────────────────────────────────────────
+
+model Recording {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  fileKey         String // clé objet S3/MinIO (pas l'URL — signée à la volée)
+  durationSeconds Int      @default(0)
+  noteContent     String?  @db.Text
+  recordedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([userId, recordedAt])
+  @@map("recordings")
+}
+
+// ─── NOTES ────────────────────────────────────────────────────
+
+model Notebook {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  notes Note[]
+
+  @@index([userId])
+  @@map("notebooks")
+}
+
+model Note {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notebookId String?   @db.Uuid // null = note rapide globale
+  notebook   Notebook? @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+  title      String
+  content    Json      @default("{}") // document TipTap (ProseMirror JSON)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([notebookId])
+  @@map("notes")
+}
+
+// ─── FLASHCARDS ───────────────────────────────────────────────
+
+enum DeckSource {
+  user
+  ai
+}
+
+model Deck {
+  id          String     @id @default(uuid()) @db.Uuid
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  isPublic    Boolean    @default(false)
+  generatedBy DeckSource @default(user)
+  createdAt   DateTime   @default(now())
+
+  cards Card[]
+
+  @@index([userId])
+  @@map("decks")
+}
+
+model Card {
+  id        String   @id @default(uuid()) @db.Uuid
+  deckId    String   @db.Uuid
+  deck      Deck     @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  front     String   @db.Text
+  back      String   @db.Text
+  createdAt DateTime @default(now())
+
+  reviews CardReview[]
+
+  @@index([deckId])
+  @@map("cards")
+}
+
+// Une ligne par révision (event-sourcing). L'état FSRS courant d'une carte
+// = dernière review : WHERE cardId = ? AND userId = ? ORDER BY reviewedAt DESC LIMIT 1
+model CardReview {
+  id           String   @id @default(uuid()) @db.Uuid
+  cardId       String   @db.Uuid
+  card         Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating       Int // 1=Again 2=Hard 3=Good 4=Easy
+  stability    Float    @default(0)
+  difficulty   Float    @default(0)
+  nextReviewAt DateTime
+  reviewedAt   DateTime @default(now())
+
+  @@index([cardId, reviewedAt])
+  @@index([userId, nextReviewAt])
+  @@map("card_reviews")
+}
+
+// ─── NOTIFICATIONS ────────────────────────────────────────────
+
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+// ─── SOCIAL (V2) ──────────────────────────────────────────────
+
+enum FriendshipStatus {
+  pending
+  accepted
+  rejected
+}
+
+model Friendship {
+  id          String           @id @default(uuid()) @db.Uuid
+  requesterId String
+  requester   User             @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addresseeId String
+  addressee   User             @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+  status      FriendshipStatus @default(pending)
+  createdAt   DateTime         @default(now())
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId])
+  @@map("friendships")
+}
+
+enum SharedItemType {
+  deck
+  note
+}
+
+// item_id est une relation polymorphique non contrainte par FK :
+// la cohérence est assurée côté applicatif selon itemType.
+model SharedItem {
+  id         String         @id @default(uuid()) @db.Uuid
+  fromUserId String
+  fromUser   User           @relation("ShareFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUserId   String
+  toUser     User           @relation("ShareTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  itemType   SharedItemType
+  itemId     String         @db.Uuid
+  createdAt  DateTime       @default(now())
+
+  @@index([toUserId])
+  @@map("shared_items")
+}
+
+model Block {
+  id        String   @id @default(uuid()) @db.Uuid
+  blockerId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@map("blocks")
+}
+
+enum ReportStatus {
+  pending
+  reviewed
+  dismissed
+}
+
+model Report {
+  id             String       @id @default(uuid()) @db.Uuid
+  reporterId     String
+  reporter       User         @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUserId String
+  reportedUser   User         @relation("Reported", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  reason         String
+  status         ReportStatus @default(pending)
+  createdAt      DateTime     @default(now())
+
+  @@index([status])
+  @@map("reports")
+}

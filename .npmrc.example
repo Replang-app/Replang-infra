@@ -1,0 +1,9 @@
+# Auth au registre npm privé GitHub Packages (scope @replang).
+# - Dans Replang-infra : utilisé pour PUBLIER @replang/db et @replang/shared.
+# - Dans chaque service : utilisé pour les INSTALLER.
+#
+# Copier en `.npmrc` et fournir NPM_TOKEN (Personal Access Token avec
+# scopes read:packages, et write:packages pour publier) via l'environnement.
+
+@replang:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${NPM_TOKEN}
