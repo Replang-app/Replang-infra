@@ -1,0 +1,73 @@
+# ──────────────────────────────────────────────────────────────
+# Override de DÉVELOPPEMENT (chargé automatiquement par `docker compose`).
+# Build les services depuis les sources LOCALES (packages @replang-app
+# résolus localement, sans publication ni token) + hot-reload.
+#
+#   docker compose up -d            # infra (base) + services (cet override)
+#
+# La prod, elle, utilise docker-compose.prod.yml (images publiées) et
+# N'inclut PAS cet override.
+# ──────────────────────────────────────────────────────────────
+
+name: replang
+
+services:
+  # ─── Mailpit — intercepteur email (dev uniquement) ──────────
+  # Capture tous les emails envoyés via SMTP :1025 sans les transmettre.
+  # Interface web : http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  auth:
+    build:
+      context: .. # dossier parent (Replang/) pour accéder à Replang-infra ET aux services
+      dockerfile: Replang-auth/Dockerfile.dev
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      AUTH_PORT: "3001"
+      # Dans le réseau Docker, la base est joignable via le host "postgres".
+      DATABASE_URL: postgresql://${POSTGRES_USER:-replang}:${POSTGRES_PASSWORD:-changeme_dev_password}@postgres:5432/${POSTGRES_DB:-replang}?schema=public
+      REDIS_URL: ${REDIS_URL}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      MAIL_FROM: ${MAIL_FROM:-noreply@replang.app}
+    ports:
+      - "${AUTH_PORT:-3001}:3001"
+    volumes:
+      - ../Replang-auth/src:/app/src
+      - ../Replang-auth/tsconfig.json:/app/tsconfig.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  notes:
+    build:
+      context: ..
+      dockerfile: Replang-notes/Dockerfile.dev
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      NOTES_PORT: "3002"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-replang}:${POSTGRES_PASSWORD:-changeme_dev_password}@postgres:5432/${POSTGRES_DB:-replang}?schema=public
+      AUTH_JWKS_URL: http://auth:3001/api/auth/jwks
+    ports:
+      - "${NOTES_PORT:-3002}:3002"
+    volumes:
+      - ../Replang-notes/src:/app/src
+      - ../Replang-notes/tsconfig.json:/app/tsconfig.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth:
+        condition: service_started

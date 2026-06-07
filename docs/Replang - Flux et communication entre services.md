@@ -1,4 +1,3 @@
----
 ## Sommaire
 
 1. [Vue d'ensemble de l'architecture](#1-vue-densemble-de-larchitecture)
@@ -11,6 +10,7 @@
 8. [Flux — Partage social (V2)](#8-flux--partage-social-v2)
 9. [Communication inter-services](#9-communication-inter-services)
 10. [Légende des protocoles](#10-l%C3%A9gende-des-protocoles)
+
 ---
 
 ## 1. Vue d'ensemble de l'architecture

@@ -1,0 +1,22 @@
+# Image one-shot pour appliquer les migrations Prisma en production.
+# Lancé avant les services applicatifs via :
+#   depends_on: migrate: condition: service_completed_successfully
+#
+# Stratégie : les migrations sont copiées directement depuis le repo
+# (pas besoin de GitHub Packages ni de NPM_TOKEN à l'exécution).
+# Seul DATABASE_URL est requis, fourni par env_file dans docker-compose.
+
+FROM node:22-slim
+WORKDIR /app
+
+# OpenSSL est requis par le moteur Prisma pour chiffrer la connexion PostgreSQL.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+ && rm -rf /var/lib/apt/lists/*
+
+# Copie les migrations et le schéma — tout ce dont prisma migrate deploy a besoin.
+COPY packages/db/prisma ./prisma
+
+# Prisma CLI est un package public (pas de token privé nécessaire).
+RUN npm install prisma
+
+CMD ["./node_modules/.bin/prisma", "migrate", "deploy"]

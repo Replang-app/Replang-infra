@@ -63,6 +63,16 @@ services:
       timeout: 5s
       retries: 10
 
+  # ─── Migration (job one-shot avant les services) ────────────
+  # S'exécute une fois, applique les migrations Prisma en attente, puis s'arrête.
+  # Les services applicatifs attendent sa complétion (service_completed_successfully).
+  migrate:
+    image: ghcr.io/replang-app/replang-migrate:latest
+    restart: "no"
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+
   # ─── Services applicatifs (images du registry) ──────────────
   auth:
     image: ghcr.io/replang-app/replang-auth:latest
@@ -71,6 +81,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.auth.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/auth`)"
@@ -84,6 +95,7 @@ services:
     env_file: .env
     depends_on:
       postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.notes.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/notes`)"
