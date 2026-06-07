@@ -1,4 +1,4 @@
-// Point d'entrée de @replang/db : ré-exporte tout le client Prisma généré
+// Point d'entrée de @replang-app/db : ré-exporte tout le client Prisma généré
 // + un singleton `prisma` prêt à l'emploi pour les services.
 
 export * from "../generated/client";

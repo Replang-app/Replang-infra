@@ -1,6 +1,6 @@
 // ──────────────────────────────────────────────────────────────
 // Replang — Schéma Prisma (SOURCE DE VÉRITÉ)
-// Centralisé dans Replang-infra, publié via @replang/db.
+// Centralisé dans Replang-infra, publié via @replang-app/db.
 // Auth gérée par Better-Auth → modèles User/Session/Account/Verification.
 // ──────────────────────────────────────────────────────────────
 
@@ -104,6 +104,17 @@ model Verification {
 
   @@index([identifier])
   @@map("verifications")
+}
+
+// Clés de signature JWT, gérées par le plugin `jwt` de Better-Auth.
+// Sert à émettre les JWT et à exposer le JWKS (clé publique) aux services.
+model Jwks {
+  id         String   @id
+  publicKey  String
+  privateKey String
+  createdAt  DateTime @default(now())
+
+  @@map("jwks")
 }
 
 // ─── RÔLES & PERMISSIONS ──────────────────────────────────────

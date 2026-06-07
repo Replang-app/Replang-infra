@@ -1,0 +1,48 @@
+name: Publier les packages (@replang-app)
+
+# Publie @replang-app/db et @replang-app/shared sur GitHub Packages.
+# - Auto : à chaque push sur main touchant packages/** (publie seulement
+#   les packages dont la version a changé).
+# - Manuel : via "Run workflow" (workflow_dispatch).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - ".github/workflows/publish-packages.yml"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: "@replang-app"
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Publier les packages dont la version a changé
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          for pkg in packages/db packages/shared; do
+            NAME=$(node -p "require('./$pkg/package.json').name")
+            VERSION=$(node -p "require('./$pkg/package.json').version")
+            if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+              echo "⏭️  $NAME@$VERSION déjà publié — ignoré."
+            else
+              echo "📦 Publication de $NAME@$VERSION…"
+              npm publish -w "$NAME"
+            fi
+          done

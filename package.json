@@ -2,7 +2,7 @@
   "name": "replang-infra",
   "version": "0.1.0",
   "private": true,
-  "description": "Repo chef d'orchestre Replang : docker-compose, schéma BDD source de vérité, packages partagés (@replang/db, @replang/shared), docs et scripts.",
+  "description": "Repo chef d'orchestre Replang : docker-compose, schéma BDD source de vérité, packages partagés (@replang-app/db, @replang-app/shared), docs et scripts.",
   "engines": {
     "node": ">=22"
   },
@@ -10,12 +10,12 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @replang/db && npm run build -w @replang/shared",
-    "db:generate": "npm run generate -w @replang/db",
-    "db:migrate": "npm run migrate -w @replang/db",
-    "db:migrate:deploy": "npm run migrate:deploy -w @replang/db",
-    "db:studio": "npm run studio -w @replang/db",
-    "db:seed": "npm run seed -w @replang/db"
+    "build": "npm run build -w @replang-app/db && npm run build -w @replang-app/shared",
+    "db:generate": "npm run generate -w @replang-app/db",
+    "db:migrate": "npm run migrate -w @replang-app/db",
+    "db:migrate:deploy": "npm run migrate:deploy -w @replang-app/db",
+    "db:studio": "npm run studio -w @replang-app/db",
+    "db:seed": "npm run seed -w @replang-app/db"
   },
   "license": "UNLICENSED"
 }

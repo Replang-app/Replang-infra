@@ -51,6 +51,13 @@ erDiagram
     datetime updated_at
   }
 
+  jwks {
+    string   id          PK
+    string   public_key
+    string   private_key
+    datetime created_at
+  }
+
   %% ─── RÔLES ───────────────────────────────────────────────────
 
   roles {
@@ -203,6 +210,7 @@ erDiagram
 ## Notes de conception
 
 - **Auth = Better-Auth.** Les tables `users`, `sessions`, `accounts`, `verifications` suivent les conventions de Better-Auth. La table `accounts` stocke le hash du mot de passe (login email/mdp) **et** les comptes OAuth éventuels. Plus de table `sessions` « maison » avec refresh token : Better-Auth gère sessions et tokens.
+- **`jwks`** stocke la paire de clés de signature des JWT (plugin `jwt` de Better-Auth). La clé publique est exposée via l'endpoint JWKS que les autres services interrogent pour vérifier les tokens.
 - **`users.id` est un `string`** (généré par Better-Auth), pas un `uuid` natif. Les tables métier référencent donc `user_id` en `string`. Les tables purement métier gardent un `uuid` en PK.
 - **Rôles en table, pas en enum.** `roles` + `user_roles` (jonction many-to-many) permettent d'ajouter/retirer un rôle sans migration de schéma. Un utilisateur peut cumuler plusieurs rôles. Rôles initiaux semés : `admin`, `user`, `ia`, `note` (à affiner).
 - **`notes.notebook_id` est nullable** : `null` = note rapide globale, `uuid` = appartient à un cahier.

@@ -1,7 +1,12 @@
 {
-  "name": "@replang/db",
+  "name": "@replang-app/db",
   "version": "0.1.0",
   "description": "Schéma Prisma centralisé (source de vérité) + client Prisma partagé pour les services Replang.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Replang-app/Replang-infra.git",
+    "directory": "packages/db"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

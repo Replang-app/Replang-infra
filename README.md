@@ -12,18 +12,18 @@ Replang-infra/
 ├── docs/                     # CDC, schéma BDD, flux inter-services
 ├── scripts/                  # init BDD, seed
 └── packages/
-    ├── db/                   # @replang/db  — schema.prisma + client Prisma partagé
-    └── shared/               # @replang/shared — middleware auth, config, erreurs
+    ├── db/                   # @replang-app/db  — schema.prisma + client Prisma partagé
+    └── shared/               # @replang-app/shared — middleware auth, config, erreurs
 ```
 
 ## Architecture (poly-repo)
 
 Un repo par service + ce repo infra. Le code commun est publié sur **GitHub Packages** (registre npm privé) sous le scope `@replang` :
 
-- `@replang/db` — schéma Prisma centralisé + client généré. Chaque service Node l'installe.
-- `@replang/shared` — middleware d'authentification (Better-Auth), validation Zod, helpers.
+- `@replang-app/db` — schéma Prisma centralisé + client généré. Chaque service Node l'installe.
+- `@replang-app/shared` — middleware d'authentification (Better-Auth), validation Zod, helpers.
 
-Quand le schéma change : on bumpe la version de `@replang/db`, on republie, et les services suivent.
+Quand le schéma change : on bumpe la version de `@replang-app/db`, on republie, et les services suivent.
 
 | Service | Repo | Port | Stack |
 |---|---|---|---|
@@ -54,6 +54,45 @@ npm run db:migrate
 
 # (les services applicatifs s'activent au fur et à mesure de leur dev)
 ```
+
+## Publication des packages (`@replang-app/db`, `@replang-app/shared`)
+
+Les packages sont publiés sur **GitHub Packages** (registre npm privé de l'orga
+`Replang-app`). Le scope **doit** être `@replang-app` (= nom de l'orga).
+
+### Automatique (CI — recommandé)
+
+Le workflow `.github/workflows/publish-packages.yml` publie à chaque push sur
+`main` touchant `packages/**`. Il ne publie qu'un package dont la **version a
+changé** : pour livrer une nouvelle version, bump le champ `version` du
+`package.json` concerné, commit, push.
+
+> Utilise le `GITHUB_TOKEN` intégré (permission `packages: write`) — aucun
+> secret à configurer.
+
+### Manuelle (premier coup / dépannage)
+
+```bash
+# 1. Créer un PAT GitHub (classic) avec le scope write:packages
+cp .npmrc.example .npmrc
+export NPM_TOKEN=ghp_xxx        # le PAT
+# 2. Publier
+sh scripts/publish-packages.sh
+```
+
+### Installer les packages dans un service
+
+Le service a besoin d'un `.npmrc` (token avec `read:packages`) :
+
+```bash
+cp .npmrc.example .npmrc        # dans le repo du service
+export NPM_TOKEN=ghp_xxx
+npm install
+```
+
+> En dev local, les services peuvent aussi référencer les packages en `file:`
+> vers `../Replang-infra/packages/*` (cas actuel de `Replang-auth`), ce qui
+> évite d'avoir à publier pendant le développement.
 
 ## Documentation
 
