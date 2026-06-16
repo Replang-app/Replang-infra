@@ -13,7 +13,6 @@ erDiagram
     string   email         UK
     boolean  emailVerified
     string   image
-    string   displayName   "champ métier"
     json     settings      "champ métier"
     datetime created_at
     datetime updated_at

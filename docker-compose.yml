@@ -1,10 +1,10 @@
 # ──────────────────────────────────────────────────────────────
-# Replang — Stack de DÉVELOPPEMENT
-# Lance l'infra de base : Postgres, Redis, MinIO, Ollama.
-# Les services applicatifs (auth, notes, …) sont ajoutés au fur et
-# à mesure de leur développement (blocs commentés en bas).
+# Replang — SOCLE (infra de base) : Postgres, Redis, MinIO, Ollama.
+# Les services applicatifs (auth, notes, mailpit, …) sont définis dans
+# docker-compose.override.yml (dev, auto-fusionné) et docker-compose.prod.yml
+# (prod, images ghcr + Traefik). Ce fichier ne contient QUE l'infra partagée.
 #
-#   docker compose up -d postgres redis minio ollama
+#   docker compose up -d        # socle + override dev (auth, notes, mailpit)
 # ──────────────────────────────────────────────────────────────
 
 name: replang
@@ -92,78 +92,6 @@ services:
     #         - driver: nvidia
     #           count: all
     #           capabilities: [gpu]
-
-  # ════════════════════════════════════════════════════════════
-  # SERVICES APPLICATIFS — à activer au fur et à mesure du dev.
-  # En dev, chaque service est buildé depuis son repo voisin
-  # (cloné à côté de Replang-infra) et expose son port en localhost.
-  # ════════════════════════════════════════════════════════════
-
-  # auth:
-  #   build: ../Replang-auth
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   ports: ["${AUTH_PORT:-3001}:3001"]
-  #   depends_on:
-  #     postgres: { condition: service_healthy }
-  #     redis: { condition: service_healthy }
-
-  # notes:
-  #   build: ../Replang-notes
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   ports: ["${NOTES_PORT:-3002}:3002"]
-  #   depends_on:
-  #     postgres: { condition: service_healthy }
-
-  # audio:
-  #   build: ../Replang-audio
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   ports: ["${AUDIO_PORT:-3003}:3003"]
-  #   depends_on:
-  #     postgres: { condition: service_healthy }
-  #     minio: { condition: service_healthy }
-
-  # cards:
-  #   build: ../Replang-cards
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   ports: ["${CARDS_PORT:-3004}:3004"]
-  #   depends_on:
-  #     postgres: { condition: service_healthy }
-  #     redis: { condition: service_healthy }
-
-  # dict:
-  #   build: ../Replang-dict
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   ports: ["${DICT_PORT:-3005}:3005"]
-  #   depends_on:
-  #     redis: { condition: service_healthy }
-
-  # notifications:
-  #   build: ../Replang-notifications
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   ports: ["${NOTIF_PORT:-3006}:3006"]
-  #   depends_on:
-  #     postgres: { condition: service_healthy }
-  #     redis: { condition: service_healthy }
-
-  # ai:
-  #   build: ../Replang-ai
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   ports: ["${AI_PORT:-8000}:8000"]
-  #   depends_on:
-  #     - ollama
-
-  # frontend:
-  #   build: ../Replang-frontend
-  #   restart: unless-stopped
-  #   env_file: .env
-  #   ports: ["${FRONTEND_PORT:-3000}:3000"]
 
 volumes:
   postgres_data:

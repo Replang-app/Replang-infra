@@ -38,22 +38,31 @@ Quand le schéma change : on bumpe la version de `@replang-app/db`, on republie,
 
 ## Démarrage rapide (dev)
 
+`docker-compose.yml` = **socle** (postgres, redis, minio, ollama). `docker-compose.override.yml`
+(auto-fusionné) ajoute les **services applicatifs** (auth, notes, mailpit) et un **reverse proxy
+Traefik** : tout est servi sous une origine unique **`http://localhost`** (prod-parity).
+
 ```bash
 # 1. Variables d'environnement
-cp .env.example .env        # puis adapter les secrets
+cp .env.example .env        # puis adapter les secrets (BETTER_AUTH_SECRET…)
 
-# 2. Installer + générer le client Prisma
-npm install
-npm run db:generate
+# 2. Lancer toute la stack dev (socle + override : auth, notes, traefik, mailpit)
+docker compose up -d --build
 
-# 3. Lancer l'infra de base (BDD, cache, stockage, IA)
-docker compose up -d postgres redis minio ollama
-
-# 4. Appliquer le schéma
-npm run db:migrate
-
-# (les services applicatifs s'activent au fur et à mesure de leur dev)
+# 3. Appliquer le schéma à la BDD (le service "migrate" n'existe qu'en prod ;
+#    en dev on lance Prisma depuis l'hôte en pointant sur localhost)
+DATABASE_URL="postgresql://replang:changeme_dev_password@localhost:5432/replang?schema=public" \
+  npm install && npm run db:migrate:deploy && npm run db:seed
 ```
+
+Accès dev :
+- API via Traefik : `http://localhost/api/auth/*`, `http://localhost/api/notes/*`
+- Ports directs (debug) : auth `:3001`, notes `:3002`
+- Mailpit (emails interceptés) : `http://localhost:8025`
+- Dashboard Traefik : `http://localhost:8080`
+
+La **prod** n'utilise PAS l'override : `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+(images `ghcr.io` + Traefik HTTPS + rate-limit global).
 
 ## Publication des packages (`@replang-app/db`, `@replang-app/shared`)
 

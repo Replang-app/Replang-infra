@@ -16,7 +16,7 @@ name: replang
 services:
   # ─── Traefik (reverse proxy + HTTPS) ────────────────────────
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3.6
     restart: unless-stopped
     command:
       - "--providers.docker=true"
@@ -84,23 +84,36 @@ services:
       migrate: { condition: service_completed_successfully }
     labels:
       - "traefik.enable=true"
+      # Middleware de rate-limit GLOBAL (défini une fois ici, référencé par tous
+      # les routers via @docker). Couvre TOUTES les routes publiques — Better-Auth
+      # ne protège que /api/auth/*. ~100 req/min par IP cliente, burst 50.
+      - "traefik.http.middlewares.ratelimit.ratelimit.average=100"
+      - "traefik.http.middlewares.ratelimit.ratelimit.period=1m"
+      - "traefik.http.middlewares.ratelimit.ratelimit.burst=50"
       - "traefik.http.routers.auth.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/auth`)"
       - "traefik.http.routers.auth.entrypoints=websecure"
       - "traefik.http.routers.auth.tls.certresolver=le"
+      - "traefik.http.routers.auth.middlewares=ratelimit@docker"
       - "traefik.http.services.auth.loadbalancer.server.port=3001"
 
   notes:
     image: ghcr.io/replang-app/replang-notes:latest
     restart: unless-stopped
     env_file: .env
+    environment:
+      # JWKS de l'auth (vérification locale des JWT). Explicite plutôt que de
+      # reposer sur le défaut du service — le hostname "auth" résout dans le réseau.
+      AUTH_JWKS_URL: http://auth:3001/api/auth/jwks
     depends_on:
       postgres: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
+      auth: { condition: service_started }
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.notes.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/notes`)"
       - "traefik.http.routers.notes.entrypoints=websecure"
       - "traefik.http.routers.notes.tls.certresolver=le"
+      - "traefik.http.routers.notes.middlewares=ratelimit@docker"
       - "traefik.http.services.notes.loadbalancer.server.port=3002"
 
   audio:
@@ -114,6 +127,7 @@ services:
       - "traefik.http.routers.audio.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/audio`)"
       - "traefik.http.routers.audio.entrypoints=websecure"
       - "traefik.http.routers.audio.tls.certresolver=le"
+      - "traefik.http.routers.audio.middlewares=ratelimit@docker"
       - "traefik.http.services.audio.loadbalancer.server.port=3003"
 
   cards:
@@ -128,6 +142,7 @@ services:
       - "traefik.http.routers.cards.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/cards`)"
       - "traefik.http.routers.cards.entrypoints=websecure"
       - "traefik.http.routers.cards.tls.certresolver=le"
+      - "traefik.http.routers.cards.middlewares=ratelimit@docker"
       - "traefik.http.services.cards.loadbalancer.server.port=3004"
 
   dict:
@@ -141,6 +156,7 @@ services:
       - "traefik.http.routers.dict.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/dict`)"
       - "traefik.http.routers.dict.entrypoints=websecure"
       - "traefik.http.routers.dict.tls.certresolver=le"
+      - "traefik.http.routers.dict.middlewares=ratelimit@docker"
       - "traefik.http.services.dict.loadbalancer.server.port=3005"
 
   notifications:
@@ -161,6 +177,7 @@ services:
       - "traefik.http.routers.ai.rule=Host(`${DOMAIN}`) && PathPrefix(`/api/ai`)"
       - "traefik.http.routers.ai.entrypoints=websecure"
       - "traefik.http.routers.ai.tls.certresolver=le"
+      - "traefik.http.routers.ai.middlewares=ratelimit@docker"
       - "traefik.http.services.ai.loadbalancer.server.port=8000"
 
   frontend:
@@ -172,6 +189,7 @@ services:
       - "traefik.http.routers.frontend.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.frontend.entrypoints=websecure"
       - "traefik.http.routers.frontend.tls.certresolver=le"
+      - "traefik.http.routers.frontend.middlewares=ratelimit@docker"
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
 
 volumes:

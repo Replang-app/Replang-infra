@@ -18,7 +18,7 @@ datasource db {
 
 // ─── AUTH (Better-Auth) ───────────────────────────────────────
 // Ces 4 modèles suivent les conventions Better-Auth (adapter Prisma).
-// On y ajoute des champs métier (displayName, settings) sur User.
+// On y ajoute des champs métier (settings) sur User.
 
 model User {
   id            String   @id
@@ -30,8 +30,7 @@ model User {
   updatedAt     DateTime @updatedAt
 
   // Champs métier Replang
-  displayName String?
-  settings    Json   @default("{}")
+  settings Json @default("{}")
 
   // Relations Better-Auth
   sessions Session[]

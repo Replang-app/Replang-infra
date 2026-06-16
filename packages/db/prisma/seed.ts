@@ -32,7 +32,6 @@ async function main() {
       name: "Replang",
       email: "system@replang.app",
       emailVerified: true,
-      displayName: "Replang",
     },
   });
 

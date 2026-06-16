@@ -12,6 +12,25 @@
 name: replang
 
 services:
+  # ─── Traefik (reverse proxy dev, HTTP nu) ───────────────────
+  # Prod-parity : route tout sous une seule origine http://localhost (port 80),
+  # path-based, comme Traefik en prod (mais sans TLS). Le front (étape 2) sera
+  # routé sur "/", l'auth sur "/api/auth", les notes sur "/api/notes" → même
+  # origine → cookies/CORS simples. Dashboard : http://localhost:8080
+  traefik:
+    image: traefik:v3.6
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--api.insecure=true" # dashboard dev sur :8080, jamais en prod
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
   # ─── Mailpit — intercepteur email (dev uniquement) ──────────
   # Capture tous les emails envoyés via SMTP :1025 sans les transmettre.
   # Interface web : http://localhost:8025
@@ -31,6 +50,10 @@ services:
     environment:
       NODE_ENV: development
       AUTH_PORT: "3001"
+      # Origine canonique dev = Traefik (http://localhost). Les liens générés
+      # (vérif email, reset, callback OAuth) passent donc par le reverse proxy.
+      BETTER_AUTH_URL: http://localhost
+      TRUSTED_ORIGINS: http://localhost,http://localhost:3000
       # Dans le réseau Docker, la base est joignable via le host "postgres".
       DATABASE_URL: postgresql://${POSTGRES_USER:-replang}:${POSTGRES_PASSWORD:-changeme_dev_password}@postgres:5432/${POSTGRES_DB:-replang}?schema=public
       REDIS_URL: ${REDIS_URL}
@@ -42,6 +65,11 @@ services:
     volumes:
       - ../Replang-auth/src:/app/src
       - ../Replang-auth/tsconfig.json:/app/tsconfig.json
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth.rule=PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.auth.entrypoints=web"
+      - "traefik.http.services.auth.loadbalancer.server.port=3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,8 +94,39 @@ services:
     volumes:
       - ../Replang-notes/src:/app/src
       - ../Replang-notes/tsconfig.json:/app/tsconfig.json
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.notes.rule=PathPrefix(`/api/notes`)"
+      - "traefik.http.routers.notes.entrypoints=web"
+      - "traefik.http.services.notes.loadbalancer.server.port=3002"
     depends_on:
       postgres:
         condition: service_healthy
+      auth:
+        condition: service_started
+
+  # ─── Frontend Next.js (dev, hot-reload) ─────────────────────
+  # Routé par Traefik sur "/" (priorité < /api/* → l'auth/notes passent avant).
+  frontend:
+    build:
+      context: ../Replang-frontend
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      # Hot-reload via volume monté (polling : nécessaire sous Windows/Docker).
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ../Replang-frontend:/app
+      - /app/node_modules # volume anonyme : garde les deps de l'image
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+    depends_on:
       auth:
         condition: service_started

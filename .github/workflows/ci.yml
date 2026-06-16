@@ -1,0 +1,31 @@
+name: CI (build packages)
+
+# Vérifie que les packages partagés compilent à chaque push / PR.
+# `npm run build` = prisma generate (@replang-app/db) puis tsc (db + shared).
+# Les packages sont des workspaces locaux ici : aucun token registre nécessaire.
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches:
+            - main
+    workflow_dispatch:
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+
+            - name: Installer les dépendances (workspaces)
+              run: npm install
+
+            - name: Build (prisma generate + tsc)
+              run: npm run build
